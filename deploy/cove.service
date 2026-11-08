@@ -10,6 +10,10 @@ User=cove
 Group=cove
 WorkingDirectory=/opt/cove
 EnvironmentFile=/opt/cove/.env
+Environment=NODE_ENV=production
+# Must be a system-wide Node binary (NodeSource installs /usr/bin/node).
+# Do not use an nvm path: User=cove cannot read /root/.nvm, and
+# ProtectHome=true hides home directories.
 ExecStart=/usr/bin/node server/index.js
 Restart=on-failure
 RestartSec=5

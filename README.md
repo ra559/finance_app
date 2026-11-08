@@ -51,7 +51,133 @@ Cove runs as a single Node.js service with a SQLite database. There is no Cove c
 
 ---
 
+## Run locally (without Docker)
+
+This runs Cove directly on your own machine. It is the quickest way to try it or develop the UI.
+
+### 1. Install Node
+
+Cove needs Node.js 22 LTS (20.11 or newer also works). Check your version:
+
+```bash
+node -v
+npm -v
+```
+
+If you normally use nvm, make sure the active version is 22. For a machine-wide service, install Node system-wide so `/usr/bin/node` exists; see the Debian systemd section.
+
+### 2. Install and configure
+
+From the project directory:
+
+```bash
+cd project_code
+npm ci
+cp .env.example .env
+```
+
+Edit `.env` for a local-only instance:
+
+```dotenv
+APP_URL=http://localhost:3000
+HOST=127.0.0.1
+PORT=3000
+DATA_DIR=./data
+TRUST_PROXY=0
+```
+
+Leave `PLAID_*` and `AI_*` blank if you want to run without bank sync or the assistant. Cove creates `data/` and its SQLite database on first start.
+
+### 3. Start the app
+
+For a production-like run with the compiled UI:
+
+```bash
+npm run build
+npm start
+```
+
+Open <http://localhost:3000>. The first visit asks you to create the owner account; there is no separate sign-up or password-reset email.
+
+For development with hot reload:
+
+```bash
+npm run dev
+```
+
+This runs the API on `:3000` and Vite on `:5173`. Open <http://localhost:5173>; Vite proxies `/api` to the API. If you use the assistant or MCP links from the dev server and want the displayed URL to match, set `APP_URL=http://localhost:5173` in `.env`. Stop either command with `Ctrl+C`.
+
+If port 3000 is taken, set `PORT=3001` in `.env` and update `APP_URL`, then start with `API_PORT=3001 npm run dev` so Vite proxies to the new port. For `npm start`, no extra variable is needed.
+
+### 4. Optional demo data
+
+After creating the owner account, go to **Settings → Data & preferences → Load demo data**. This adds four sample accounts and a removable "Cove Demo" institution; remove it from the same section.
+
+Your local data is in `project_code/data/`. Keep `.env` and `data/` out of version control — both are already ignored by `.gitignore`.
+
+---
+
+## Run locally with Docker
+
+This runs the same image used in production on your own machine. Node.js is not required on the host; you need Docker Desktop (macOS/Windows) or Docker Engine with Compose v2 (Linux). Start Docker Desktop or the Docker daemon before continuing.
+
+### 1. Configure
+
+From the project directory:
+
+```bash
+cd project_code
+cp .env.example .env
+```
+
+For a local-only instance, use:
+
+```dotenv
+APP_URL=http://localhost:3000
+COVE_PORT=3000
+TRUST_PROXY=0
+```
+
+Compose sets `NODE_ENV`, `PORT`, and `DATA_DIR` for the container; the app binds `0.0.0.0` inside it. A `.env` created for the non-Docker setup still works: Compose reads `APP_URL`, `COVE_PORT`, `TRUST_PROXY`, `TZ`, `APP_SECRET`, and the integration keys from it. Leave `PLAID_*` and `AI_*` blank to start without bank sync or the assistant.
+
+### 2. Build and start
+
+```bash
+docker compose up -d --build
+docker compose ps
+docker compose logs -f cove
+```
+
+The first build takes a few minutes because the native SQLite module and the web UI are built. When the container reports healthy, open <http://localhost:3000> and create the owner account.
+
+### 3. Stop, update, and reset
+
+```bash
+docker compose down           # stop, keep all data
+docker compose up -d --build  # rebuild after code changes
+docker compose down -v        # stop AND delete the cove_data volume
+```
+
+Your database and encryption key live in the named volume `cove_data`, not in `project_code/data`. See [Backup and restore](#backup-and-restore) for backup commands.
+
+### 4. Ports and host services
+
+If port 3000 is already in use, change both values in `.env` and recreate the container:
+
+```dotenv
+COVE_PORT=3001
+APP_URL=http://localhost:3001
+```
+
+Then run `docker compose up -d` and open <http://localhost:3001>. `COVE_PORT` changes only the host port; the app still listens on 3000 inside the container.
+
+The Compose file maps `host.docker.internal` to the host, so a local Ollama or LM Studio server is reachable from the container at `http://host.docker.internal:11434/v1` or `http://host.docker.internal:1234/v1`. The optional Cloudflare Tunnel profile is for server deployments and is not started by default.
+
+---
+
 ## Quick start with Docker
+
+For a laptop or workstation, use [Run locally with Docker](#run-locally-with-docker) above. The steps below target a server install under `/opt`.
 
 ```bash
 # 1. Get the code onto your server
@@ -212,7 +338,9 @@ sudo systemctl status cove
 journalctl -u cove -f
 ```
 
-The unit runs as `cove`, hardens the filesystem with `ProtectSystem=strict`, and only allows writes to `/var/lib/cove`.
+The unit runs as `cove`, hardens the filesystem with `ProtectSystem=strict`, and only allows writes to `/var/lib/cove`. It expects Node at `/usr/bin/node` — the system-wide binary installed by the NodeSource step above.
+
+> **Do not use an nvm path in `ExecStart`.** Even a correct path such as `/root/.nvm/versions/node/v22.20.0/bin/node` will fail: the service runs as `cove`, cannot traverse `/root`, and `ProtectHome=true` hides home directories. If `command -v node` points into `~/.nvm`, install Node system-wide with the commands in step 1 and use `/usr/bin/node`.
 
 ### 6. Reverse proxy (optional)
 
@@ -392,7 +520,7 @@ If you would rather not use service tokens, add a **Bypass** policy for `api/mcp
 3. You land on an empty Overview with three options:
    - **Connect a bank** (needs Plaid keys),
    - **Import a statement** (CSV/OFX/QFX),
-   - **Load demo data** (14 months of sample accounts and transactions, removable in Settings → Data).
+   - **Load demo data** (14 months of sample accounts and transactions, removable in Settings → Data & preferences).
 4. Set budgets in **Budgets**, review categories in **Settings → Categories**, then connect the assistant in **Settings → AI assistant**.
 
 Sessions last 30 days. There is no password-reset email by design — keep the credentials safe. Changing the password in Settings signs out other sessions.
@@ -730,8 +858,10 @@ project_code/
 
 ### Development
 
+See [Run locally (without Docker)](#run-locally-without-docker) for prerequisites and configuration. The short version:
+
 ```bash
-npm install
+npm ci
 npm run dev      # API on :3000, Vite on :5173
 npm run build    # production assets into dist/
 npm start        # serve API + dist on :3000
@@ -775,6 +905,24 @@ All endpoints are under `/api` and require the session cookie except `/api/healt
 ## Troubleshooting
 
 **Login page keeps returning after sign-in (reverse proxy).** Set `APP_URL` to the exact public URL and `TRUST_PROXY=1`. The session cookie is only marked `Secure` on HTTPS; a mismatch between `APP_URL` and the browser URL can drop it.
+
+**`cove.service` fails with `status=203/EXEC` or "Unable to locate executable .../bin/node".** The unit points at a Node binary the `cove` user cannot execute — usually an nvm path under `/root` (and a malformed version at that). Check it with:
+
+```bash
+systemctl cat cove | grep ExecStart
+command -v node
+ls -l /usr/bin/node
+```
+
+Set `ExecStart=/usr/bin/node server/index.js` (`sudo systemctl edit --full cove`), install the system-wide Node 22 package from step 1 if `/usr/bin/node` is missing, then reinstall dependencies for that Node version:
+
+```bash
+sudo -u cove bash -lc 'cd /opt/cove && rm -rf node_modules && npm ci && npm run build && npm prune --omit=dev'
+sudo systemctl daemon-reload
+sudo systemctl restart cove
+sudo systemctl status cove --no-pager
+journalctl -u cove -n 50 --no-pager
+```
 
 **`better-sqlite3` fails to install.** Install `python3`, `make`, `g++`, then `npm ci` again. On low-memory ARM VPS add swap. Docker builds include the toolchain.
 
