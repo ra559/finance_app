@@ -1,0 +1,25 @@
+[Unit]
+Description=Cove personal finance
+Documentation=file:/opt/cove/README.md
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=cove
+Group=cove
+WorkingDirectory=/opt/cove
+EnvironmentFile=/opt/cove/.env
+ExecStart=/usr/bin/node server/index.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=15
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/cove
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target

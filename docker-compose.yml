@@ -1,0 +1,66 @@
+name: cove
+
+services:
+  cove:
+    build:
+      context: .
+    image: cove-finance:1.0.0
+    container_name: cove
+    restart: unless-stopped
+    ports:
+      - "${COVE_PORT:-3000}:3000"
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      DATA_DIR: /data
+      APP_URL: ${APP_URL:-http://localhost:3000}
+      TRUST_PROXY: ${TRUST_PROXY:-1}
+      APP_SECRET: ${APP_SECRET:-}
+      TZ: ${TZ:-UTC}
+      PLAID_CLIENT_ID: ${PLAID_CLIENT_ID:-}
+      PLAID_SECRET: ${PLAID_SECRET:-}
+      PLAID_ENV: ${PLAID_ENV:-sandbox}
+      PLAID_COUNTRY_CODES: ${PLAID_COUNTRY_CODES:-US,CA}
+      PLAID_INVESTMENTS: ${PLAID_INVESTMENTS:-true}
+      SYNC_INTERVAL_HOURS: ${SYNC_INTERVAL_HOURS:-6}
+      AI_BASE_URL: ${AI_BASE_URL:-}
+      AI_API_KEY: ${AI_API_KEY:-}
+      AI_MODEL: ${AI_MODEL:-}
+    volumes:
+      - cove_data:/data
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    security_opt:
+      - no-new-privileges:true
+
+  # Optional Cloudflare Tunnel. Start with:
+  #   docker compose --profile tunnel up -d
+  # Requires CLOUDFLARE_TUNNEL_TOKEN in .env, and a public hostname in the
+  # Cloudflare Zero Trust dashboard pointing at http://cove:3000
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    container_name: cove-tunnel
+    restart: unless-stopped
+    profiles: ["tunnel"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      cove:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  cove_data:
+    name: cove_data
